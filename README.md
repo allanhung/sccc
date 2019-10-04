@@ -55,6 +55,32 @@ version:
 
 ## on client side
 ```bash
+sccc get --help                                                      ✔  01:06:05  100% 🔋
+get config from spring cloud config server
+For example:
+
+sccc get -u http://localhost:8888 -a app -n dev -v 1.0.6 -b master \
+         -c conf/app1.properties=/app/application1.properties \
+         -c conf/app2.yaml=/app/application2.yaml \
+         -r resources/myres1=/app/myres1.res \
+         -r resources/myres2=/app/myres2.res
+
+Usage:
+  sccc get [flags]
+
+Flags:
+  -a, --application string     application default: application (default "application")
+  -b, --branch string          git branch default: master (default "master")
+  -h, --help                   help for get
+  -n, --namespace string       kubernetes namespace
+  -r, --resource configFiles   resource file example: resources/myres=/app/app.res (can specify multiple) (default [])
+  -u, --uri string             spring cloud config server uri (default "http://localhost:8888")
+  -v, --version string         application version
+
+Global Flags:
+      --config string   config file (default is $HOME/.sccc.yaml)
+```
+```bash
 sccc get -u http://localhost:8888 -a app -n dev -v 1.0.6 -b master \
          -c conf/app1.properties=/app/application1.properties \
          -c conf/app2.yaml=/app/application2.yaml \
