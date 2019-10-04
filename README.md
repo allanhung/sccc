@@ -55,7 +55,8 @@ version:
 
 ## on client side
 ```bash
-sccc get --help                                                      ✔  01:06:05  100% 🔋
+sccc get --help
+
 get config from spring cloud config server
 For example:
 
