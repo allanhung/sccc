@@ -40,7 +40,21 @@ type getCmdFlags struct {
   resource     configFiles
 }
 
-func (cfg *getCmdFlags) FetchFile(debug bool) error {
+func fetchFileFromUrl(url string) ([]byte, error) {
+  fmt.Println("fetch file config from url:", url)
+  resp, err := http.Get(url)
+  if err != nil {
+    return []byte{}, err
+  }
+  defer resp.Body.Close()
+  body, err := ioutil.ReadAll(resp.Body)
+  if err != nil {
+    return []byte{}, err
+  }
+  return body, nil
+}
+
+func (cfg *getCmdFlags) fetchFile(debug bool) error {
   baseurl := fmt.Sprintf("%s/%s/%s/%s", cfg.uri, cfg.application, cfg.namespace, cfg.branch)
   sections := []string{
     "default",
@@ -50,18 +64,56 @@ func (cfg *getCmdFlags) FetchFile(debug bool) error {
   fmt.Printf("combind config with %v\n", sections)
   // process config files
   for _, configFile := range cfg.config {
+    body := []byte{}
     configList := strings.Split(configFile, "=")
-    fmt.Println("fetch config from url:", baseurl+"/"+configList[0])
-    resp, err := http.Get(baseurl+"/"+configList[0])
-    if err != nil {
-      return err
+    if strings.Contains(configList[0], ":") {
+      templateConf := strings.Split(configList[0], ":")
+      defaultBody, err := fetchFileFromUrl(baseurl+"/"+templateConf[0])
+      if err != nil {
+        return err
+      }
+      // process default body
+      if filepath.Ext(templateConf[0]) == ".properties" {
+        if string(defaultBody[len(defaultBody)-1:]) == "\n" {
+          defaultBody = defaultBody[:len(defaultBody)-1]
+        }
+        defaultBody = append([]byte("default:\n"), defaultBody...)
+        defaultBody = bytes.ReplaceAll(defaultBody, []byte("\n"), []byte("\n  "))
+        if templateConf[1] == "" {
+          cBody, err := fetchFileFromUrl(baseurl+"/"+templateConf[1])
+          if err != nil {
+            return err
+          }
+          body = append(defaultBody, []byte("\n")...)
+          body = append(body, cBody...)
+        } else {
+          body = defaultBody
+        }
+      } else {
+        template := yaml.MapSlice{}
+        if err := yaml.Unmarshal(defaultBody, &template); err != nil {
+          return err
+        }
+        template = setValue(template, "default", template)
+        body, err = yaml.Marshal(template)
+        if err != nil {
+          return err
+        }
+        if templateConf[1] == "" {
+          cBody, err := fetchFileFromUrl(baseurl+"/"+templateConf[1])
+          if err != nil {
+            return err
+          }
+          body = append(body, cBody...)
+        }
+      }
+    } else {
+      var err error
+      body, err = fetchFileFromUrl(baseurl+"/"+configList[0])
+      if err != nil {
+        return err
+      }
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-      return err
-    }
-    fmt.Printf("combind config with %v\n", sections)
     if filepath.Ext(configList[0]) == ".properties" {
       body = bytes.ReplaceAll(body, []byte("="), []byte(": "))
     }
@@ -220,20 +272,20 @@ For example:
 
 sccc get -u http://localhost:8888 -a app -n dev -v 1.0.6 -b master \
          -c conf/app1.properties=/app/application1.properties \
-         -c conf/app2.yaml=/app/application2.yaml \
+         -c conf/app1.yaml=/app/application1.yaml \
+         -r resources/myres1=/app/myres1.res \ 
+         -r resources/myres2=/app/myres2.res
+or
+sccc get -u http://localhost:8888 -a app -n dev -v 1.0.6 -b master \
+         -c conf/app2.properties:conf/app3.properties=/app/application1.properties \
+         -c conf/app2.yaml:conf/app3.yaml=/app/application1.yaml \
          -r resources/myres1=/app/myres1.res \ 
          -r resources/myres2=/app/myres2.res`, 
     Run: func(cmd *cobra.Command, args []string) {
-    err := CmdFlags.FetchFile(false)
+    err := CmdFlags.fetchFile(false)
     if err != nil {
       panic(err)
     }
-    fmt.Println(CmdFlags.application)
-    fmt.Println(CmdFlags.branch)
-    fmt.Println(CmdFlags.config)
-    fmt.Println(CmdFlags.namespace)
-    fmt.Println(CmdFlags.version)
-    fmt.Println(CmdFlags.uri)
   },
 }
 
@@ -245,6 +297,6 @@ func init() {
   f.StringVarP(&CmdFlags.namespace, "namespace", "n", "", "kubernetes namespace")
   f.StringVarP(&CmdFlags.version, "version", "v", "", "application version")
   f.StringVarP(&CmdFlags.branch, "branch", "b", "master", "git branch default: master")
-  f.VarP(&CmdFlags.config, "config", "c", "config file example: conf/app.conf=/etc/application.propertiess (can specify multiple)")
-  f.VarP(&CmdFlags.resource, "resource", "r", "resource file example: resources/myres=/app/app.res (can specify multiple)")
+  f.VarP(&CmdFlags.config, "configfile", "c", "config file example: conf/app.conf=/etc/application.propertiess (can specify multiple)")
+  f.VarP(&CmdFlags.resource, "resourcefile", "r", "resource file example: resources/myres=/app/app.res (can specify multiple)")
 }
