@@ -3,6 +3,7 @@ package cmd
 import (
   "fmt"
   "os"
+  "path"
   "io"
   "io/ioutil"
   "bytes"
@@ -30,6 +31,10 @@ func (v *configFiles) Set(value string) error {
   return nil
 }
 
+const (
+	defaultDirectoryPermission = 0755
+)
+
 type getCmdFlags struct {
   uri          string
   application  string
@@ -38,6 +43,17 @@ type getCmdFlags struct {
   branch       string
   config       configFiles
   resource     configFiles
+}
+
+// check if the directory exists to create file. creates if don't exists
+func ensureDirectoryForFile(file string) error {
+	baseDir := path.Dir(file)
+	_, err := os.Stat(baseDir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return os.MkdirAll(baseDir, defaultDirectoryPermission)
 }
 
 func fetchFileFromUrl(url string) ([]byte, error) {
@@ -54,7 +70,7 @@ func fetchFileFromUrl(url string) ([]byte, error) {
   return body, nil
 }
 
-func (cfg *getCmdFlags) fetchFile(debug bool) error {
+func (cfg *getCmdFlags) fetchFile() error {
   baseurl := fmt.Sprintf("%s/%s/%s/%s", cfg.uri, cfg.application, cfg.namespace, cfg.branch)
   sections := []string{
     "default",
@@ -126,6 +142,10 @@ func (cfg *getCmdFlags) fetchFile(debug bool) error {
       data = bytes.ReplaceAll(data, []byte(": "), []byte("="))
     }
     fmt.Println("save config to:", configList[1])
+	  err = ensureDirectoryForFile(configList[1])
+  	if err != nil {
+	  	return err
+  	}
     out, err := os.Create(configList[1])
     if err != nil {
       return err
@@ -135,6 +155,7 @@ func (cfg *getCmdFlags) fetchFile(debug bool) error {
     if err != nil {
       return err
     }
+    fmt.Printf("config file %s context:\n%s\n", configList[1], string(data))
   }
   // process resource files
   for _, res := range cfg.resource {
@@ -145,23 +166,24 @@ func (cfg *getCmdFlags) fetchFile(debug bool) error {
       return err
     }
     defer resp.Body.Close()
-    if debug {
-      buf := new(bytes.Buffer)
-      buf.ReadFrom(resp.Body)
-      fmt.Println(buf.String())
-    } else {
-      fmt.Println("save resource to:", resList[1])
-      out, err := os.Create(resList[1])
-      if err != nil {
-        return err
-      }
-      defer out.Close()
-
-      _, err = io.Copy(out, resp.Body)
-      if err != nil {
-        return err
-      }
+    buf := new(bytes.Buffer)
+    buf.ReadFrom(resp.Body)
+    fmt.Println("save resource to:", resList[1])
+    err = ensureDirectoryForFile(resList[1])
+    if err != nil {
+      return err
+    }    
+    out, err := os.Create(resList[1])
+    if err != nil {
+      return err
     }
+    defer out.Close()
+
+    _, err = io.Copy(out, resp.Body)
+    if err != nil {
+      return err
+    }
+    fmt.Printf("resource file %s context:\n%s\n", resList[1], buf.String())
   }
   return nil
 }
@@ -282,7 +304,7 @@ sccc get -u http://localhost:8888 -a app -n dev -v 1.0.6 -b master \
          -r resources/myres1=/app/myres1.res \ 
          -r resources/myres2=/app/myres2.res`, 
     Run: func(cmd *cobra.Command, args []string) {
-    err := CmdFlags.fetchFile(false)
+    err := CmdFlags.fetchFile()
     if err != nil {
       panic(err)
     }
