@@ -96,14 +96,14 @@ func (cfg *getCmdFlags) fetchFile() error {
         defaultBody = append([]byte("default:\n"), defaultBody...)
         defaultBody = bytes.ReplaceAll(defaultBody, []byte("\n"), []byte("\n  "))
         if templateConf[1] == "" {
+          body = defaultBody
+        } else {
           cBody, err := fetchFileFromUrl(baseurl+"/"+templateConf[1])
           if err != nil {
             return err
           }
           body = append(defaultBody, []byte("\n")...)
           body = append(body, cBody...)
-        } else {
-          body = defaultBody
         }
       } else {
         template := yaml.MapSlice{}
@@ -130,22 +130,22 @@ func (cfg *getCmdFlags) fetchFile() error {
         return err
       }
     }
-    if filepath.Ext(configList[0]) == ".properties" {
+    if filepath.Ext(strings.Split(configList[0],":")[0]) == ".properties" {
       body = bytes.ReplaceAll(body, []byte("="), []byte(": "))
     }
     data, err := valsections(body, sections)
     if err != nil {
       return err
     }
-    if filepath.Ext(configList[0]) == ".properties" {
+    if filepath.Ext(strings.Split(configList[0],":")[0]) == ".properties" {
       data = bytes.ReplaceAll(data, []byte("null\n"), []byte("\n"))
       data = bytes.ReplaceAll(data, []byte(": "), []byte("="))
     }
     fmt.Println("save config to:", configList[1])
 	  err = ensureDirectoryForFile(configList[1])
-  	if err != nil {
-	  	return err
-  	}
+    if err != nil {
+      return err
+    }
     out, err := os.Create(configList[1])
     if err != nil {
       return err
@@ -172,7 +172,7 @@ func (cfg *getCmdFlags) fetchFile() error {
     err = ensureDirectoryForFile(resList[1])
     if err != nil {
       return err
-    }    
+    }
     out, err := os.Create(resList[1])
     if err != nil {
       return err
@@ -209,6 +209,7 @@ func valsections(configContext []byte, sections []string) ([]byte, error) {
   template := yaml.MapSlice{}
   base := yaml.MapSlice{}
 
+  // fmt.Printf("config context: %s\n", string(configContext))
   if err := yaml.Unmarshal(configContext, &template); err != nil {
     return []byte{}, fmt.Errorf("failed to parse config: %s", err)
   }
